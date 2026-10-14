@@ -9,3 +9,7 @@ user_agent = "Go-http-client/1.1"
 
 # 可选 HTTP/HTTPS 代理
 # proxy = "http://127.0.0.1:7890"
+
+# 可选 Telegram 通知（签到成功/已签到/失败都会推送）
+# telegram_bot_token = "123456:ABC..."
+# telegram_chat_id = "123456789"
