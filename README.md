@@ -69,13 +69,25 @@ Workflow 使用 `actions/checkout@v5`、`actions/setup-python@v6`（Node 24；Py
 |------|-----|
 | `HYPERDOWN_EMAIL` | 登录邮箱 |
 | `HYPERDOWN_PASSWORD` | 登录密码 |
+| `TELEGRAM_BOT_TOKEN` | （可选）Telegram Bot token，配置后签到结果会推送到 Telegram |
+| `TELEGRAM_CHAT_ID` | （可选）Telegram chat id |
 
 （代理等高级项见 [环境变量](#环境变量)；不必为 Actions 单独建 Secret。）
 
 ```bash
 gh secret set HYPERDOWN_EMAIL -R OWNER/REPO
 gh secret set HYPERDOWN_PASSWORD -R OWNER/REPO
+gh secret set TELEGRAM_BOT_TOKEN -R OWNER/REPO
+gh secret set TELEGRAM_CHAT_ID -R OWNER/REPO
 ```
+
+#### Telegram 通知（可选）
+
+1. 与 [@BotFather](https://t.me/BotFather) 对话创建 Bot，拿到 token
+2. 与你的 Bot 随意发一句话，然后访问 `https://api.telegram.org/bot<TOKEN>/getUpdates`，找到 `chat.id`
+3. 把 token 和 chat id 配成上面的 Secrets（或 `config.toml` / 环境变量）
+
+签到成功 / 今日已签到 / 签到失败都会推送，成功时包含**本次获得容量**和当前余额。不配置则静默跳过，不影响签到。
 
 ### 2. 立刻试跑
 
