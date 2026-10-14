@@ -36,6 +36,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from client import DEFAULT_UA, APIError, HyperdownClient, TokenPair
 from secure_api import B64_VARIANT, KDF_VARIANT, SIGN_VARIANT
+from notify import build_checkin_msg, send_telegram
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_PATH = ROOT / "config.toml"
@@ -71,6 +72,8 @@ def load_config(path: Path) -> dict[str, Any]:
         "email": "",
         "password": "",
         "proxy": "",
+        "telegram_bot_token": "",
+        "telegram_chat_id": "",
     }
     if path.is_file():
         if tomllib is None:
@@ -103,7 +106,21 @@ def load_config(path: Path) -> dict[str, Any]:
         cfg["proxy"] = os.environ["HYPERDOWN_PROXY"]
     if os.environ.get("HYPERDOWN_USER_AGENT"):
         cfg["user_agent"] = os.environ["HYPERDOWN_USER_AGENT"]
+    if os.environ.get("TELEGRAM_BOT_TOKEN"):
+        cfg["telegram_bot_token"] = os.environ["TELEGRAM_BOT_TOKEN"]
+    if os.environ.get("TELEGRAM_CHAT_ID"):
+        cfg["telegram_chat_id"] = os.environ["TELEGRAM_CHAT_ID"]
     return cfg
+
+
+def notify_telegram(cfg: dict[str, Any], text: str) -> None:
+    """发送 Telegram 通知；未配置则静默跳过，失败不影响主流程。"""
+    token = str(cfg.get("telegram_bot_token") or "").strip()
+    chat_id = str(cfg.get("telegram_chat_id") or "").strip()
+    if not token or not chat_id:
+        return
+    ok = send_telegram(token, chat_id, text)
+    log(f"Telegram 通知{'已发送' if ok else '发送失败'}")
 
 
 def load_tokens(path: Path) -> TokenPair:
@@ -164,12 +181,15 @@ def ensure_auth(client: HyperdownClient, email: str, password: str) -> dict[str,
     return client.me()
 
 
-def do_checkin(client: HyperdownClient, user: dict[str, Any]) -> int:
+def do_checkin(client: HyperdownClient, user: dict[str, Any], cfg: dict[str, Any]) -> int:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if user.get("is_check_in"):
+        bal = format_bytes(user.get("traffic_bytes"))
         log(
-            f"今日已签到。流量余额 {format_bytes(user.get('traffic_bytes'))}，"
+            f"今日已签到。流量余额 {bal}，"
             f"累计签到流量 {format_bytes(user.get('total_traffic_check_in_bytes'))}"
         )
+        notify_telegram(cfg, build_checkin_msg(True, "", bal, ts, already=True))
         return EXIT_OK
 
     log(
@@ -180,12 +200,24 @@ def do_checkin(client: HyperdownClient, user: dict[str, Any]) -> int:
     except APIError as e:
         if e.code == "network_error":
             log(f"网络错误: {e.message}")
+            notify_telegram(
+                cfg, build_checkin_msg(False, "", "", ts, error=f"网络错误: {e.message}")
+            )
             return EXIT_NETWORK
         # Idempotent: server says already done
         if e.code in ("already_checked_in", "already_check_in", "checked_in"):
             log(f"服务端确认今日已签到: {e.message}")
+            notify_telegram(
+                cfg,
+                build_checkin_msg(
+                    True, "", format_bytes(user.get("traffic_bytes")), ts, already=True
+                ),
+            )
             return EXIT_OK
         log(f"签到失败: [{e.code}] {e.message}")
+        notify_telegram(
+            cfg, build_checkin_msg(False, "", "", ts, error=f"[{e.code}] {e.message}")
+        )
         if e.code in (
             "secure_request_invalid",
             "secure_request_required",
@@ -201,6 +233,9 @@ def do_checkin(client: HyperdownClient, user: dict[str, Any]) -> int:
     user2 = result.get("user") if isinstance(result.get("user"), dict) else {}
     bal = user2.get("traffic_bytes", user.get("traffic_bytes"))
     log(f"签到成功！本次奖励 {format_bytes(reward)}，余额 {format_bytes(bal)}")
+    notify_telegram(
+        cfg, build_checkin_msg(True, format_bytes(reward), format_bytes(bal), ts)
+    )
     if user2:
         log(
             f"is_check_in={user2.get('is_check_in')} "
@@ -269,12 +304,32 @@ def main(argv: list[str] | None = None) -> int:
         user = {**user, "is_check_in": False}
 
     try:
-        return do_checkin(client, user)
+        return do_checkin(client, user, cfg)
     except APIError as e:
         if e.code == "network_error":
             log(f"网络错误: {e.message}")
+            notify_telegram(
+                cfg,
+                build_checkin_msg(
+                    False,
+                    "",
+                    "",
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    error=f"网络错误: {e.message}",
+                ),
+            )
             return EXIT_NETWORK
         log(f"签到错误: [{e.code}] {e.message}")
+        notify_telegram(
+            cfg,
+            build_checkin_msg(
+                False,
+                "",
+                "",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                error=f"[{e.code}] {e.message}",
+            ),
+        )
         return EXIT_CHECKIN
 
 
