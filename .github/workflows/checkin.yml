@@ -27,6 +27,9 @@ jobs:
         env:
           HYPERDOWN_EMAIL: ${{ secrets.HYPERDOWN_EMAIL }}
           HYPERDOWN_PASSWORD: ${{ secrets.HYPERDOWN_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
         run: |
           set -euo pipefail
           if [ -z "${HYPERDOWN_EMAIL:-}" ] || [ -z "${HYPERDOWN_PASSWORD:-}" ]; then
